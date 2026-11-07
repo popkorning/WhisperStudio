@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Транскрибация</title>
+<script>
+  // Theme before first paint, so a manual choice never flashes the other theme.
+  try { const t = localStorage.getItem("transcribe.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
+<link rel="stylesheet" href="style.css?v=9">
+</head>
+<body>
+<div id="app">
+  <!-- ============================================================ sidebar -->
+  <aside id="sidebar" aria-label="Боковая панель">
+    <div class="side-search">
+      <svg class="ic" aria-hidden="true"><use href="icons.svg#search"/></svg>
+      <input id="lib-search" type="search" placeholder="Поиск" autocomplete="off" spellcheck="false" title="Поиск по названию и тексту (Ctrl+Shift+F)">
+    </div>
+    <nav class="side-nav">
+      <button class="nav-item" data-view="library" title="Библиотека (Ctrl+1)">Библиотека<span class="nav-count" id="nav-lib"></span></button>
+      <button class="nav-item" data-view="queue" title="Очередь (Ctrl+2)">Очередь<span class="nav-count" id="nav-queue"></span></button>
+      <button class="nav-item" data-view="gold" title="Эталон: проверка на слух и точность моделей (Ctrl+3)">Эталон<span class="nav-count" id="nav-gold"></span></button>
+      <button class="nav-item" id="nav-dict" title="Словарь проекта (Ctrl+Shift+D)">Словарь<span class="nav-count" id="nav-dict-n"></span></button>
+      <button class="nav-item" id="nav-models">Модели<span class="nav-count" id="nav-models-n"></span></button>
+    </nav>
+    <div id="doc-list" class="doc-list scroll-area" role="listbox" aria-label="Записи"></div>
+    <div class="side-bottom">
+      <span id="device-badge" class="badge"></span>
+      <button class="text-btn" id="btn-theme">Оформление</button>
+    </div>
+  </aside>
+
+  <!-- ============================================================ main column -->
+  <main id="main">
+    <section id="view-doc" class="view">
+      <div id="topbar" class="topbar">
+        <header class="toolbar">
+          <button class="icon-btn side-toggle" data-act="toggle-side" title="Показать боковую панель (Ctrl+\)" aria-label="Показать боковую панель"><svg class="ic"><use href="icons.svg#sidebar"/></svg></button>
+          <div class="tb-title">
+            <h1 id="doc-title" spellcheck="false" title="Двойной клик или F2 — переименовать"></h1>
+            <div id="doc-meta" class="tb-meta"></div>
+          </div>
+          <div class="tb-actions" id="tb-actions">
+            <div class="review" id="review-group">
+              <button class="pill-btn" id="btn-review" title="Подсветка сомнительных слов">Проверка</button>
+              <button class="icon-btn" id="btn-rev-prev" title="Предыдущее сомнительное (Shift+F3)" aria-label="Предыдущее сомнительное"><svg class="ic"><use href="icons.svg#chev-l"/></svg></button>
+              <button class="icon-btn" id="btn-rev-next" title="Следующее сомнительное (F3)" aria-label="Следующее сомнительное"><svg class="ic"><use href="icons.svg#chev-r"/></svg></button>
+            </div>
+            <button class="icon-btn" id="btn-find" title="Найти (Ctrl+F)" aria-label="Найти"><svg class="ic"><use href="icons.svg#search"/></svg></button>
+            <button class="text-btn strong" id="btn-export" title="Экспорт (Ctrl+E)">Экспорт</button>
+            <button class="icon-btn" id="btn-more" title="Ещё" aria-label="Ещё"><svg class="ic"><use href="icons.svg#more"/></svg></button>
+            <button class="icon-btn" id="btn-insp" title="Инспектор (Ctrl+I)" aria-label="Инспектор"><svg class="ic"><use href="icons.svg#inspector"/></svg></button>
+          </div>
+        </header>
+        <div id="goldbar" class="goldbar" hidden>
+          <div class="gb-prog" title="Проверено на слух: доля длительности записи"><i id="gb-bar"></i></div>
+          <span id="gb-text" class="gb-text"></span>
+          <label class="tg gb-vars" title="Подсветка сомнительных слов и варианты других моделей. Выключено, чтобы догадки моделей не подсказывали, что слышать"><input type="checkbox" id="gb-vars"><span></span><em>Показывать </em>варианты моделей</label>
+          <button class="text-btn" id="gb-next" title="Следующий непроверенный фрагмент (F3)">К непроверенному</button>
+          <button class="text-btn" id="gb-list" title="Список эталона и оценка моделей (Ctrl+3)">Все эталоны</button>
+        </div>
+        <div id="findbar" class="findbar" hidden>
+          <input id="find-input" class="field" placeholder="Найти" autocomplete="off" spellcheck="false">
+          <input id="replace-input" class="field" placeholder="Заменить на" autocomplete="off" spellcheck="false">
+          <span id="find-count" class="find-count"></span>
+          <button class="btn" id="btn-replace-one">Заменить</button>
+          <button class="btn" id="btn-replace">Заменить все</button>
+          <button class="icon-btn" id="btn-find-close" title="Закрыть (Esc)" aria-label="Закрыть"><svg class="ic"><use href="icons.svg#close"/></svg></button>
+        </div>
+      </div>
+
+      <div id="scroller" class="scroller scroll-area">
+        <div id="state" class="state" hidden></div>
+        <article id="transcript" class="transcript"></article>
+      </div>
+
+      <footer id="player" class="player" hidden>
+        <button class="play" id="btn-play" title="Воспроизвести (Пробел)" aria-label="Воспроизвести">
+          <svg class="ic20 i-play"><use href="icons.svg#play"/></svg>
+          <svg class="ic20 i-pause"><use href="icons.svg#pause"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-back" title="Назад 5 с (←)" aria-label="Назад 5 секунд"><svg class="ic20"><use href="icons.svg#back5"/></svg></button>
+        <button class="icon-btn" id="btn-fwd" title="Вперёд 5 с (→)" aria-label="Вперёд 5 секунд"><svg class="ic20"><use href="icons.svg#fwd5"/></svg></button>
+        <span id="t-cur" class="time">0:00</span>
+        <div class="wave-wrap" id="wave-wrap">
+          <div id="ticks" class="ticks"></div>
+          <div id="wave" class="wave"></div>
+          <div id="strip" class="strip"></div>
+          <div id="wave-tip" class="wave-tip" hidden></div>
+        </div>
+        <span id="t-dur" class="time dim">0:00</span>
+        <button class="pill-btn wide-only" id="btn-rate" title="Скорость (Ctrl+[ / Ctrl+])">1×</button>
+        <button class="pill-btn wide-only" id="btn-follow" title="Прокручивать текст за звуком">Следовать</button>
+        <button class="icon-btn narrow-only" id="btn-player-more" title="Ещё" aria-label="Ещё"><svg class="ic"><use href="icons.svg#more"/></svg></button>
+        <audio id="audio" preload="auto"></audio>
+      </footer>
+    </section>
+
+    <section id="view-queue" class="view" hidden>
+      <div class="topbar static">
+        <header class="toolbar">
+          <button class="icon-btn side-toggle" data-act="toggle-side" title="Показать боковую панель (Ctrl+\)" aria-label="Показать боковую панель"><svg class="ic"><use href="icons.svg#sidebar"/></svg></button>
+          <div class="tb-title"><h1>Очередь</h1></div>
+          <span id="q-summary" class="q-summary"></span>
+          <button class="text-btn strong" id="btn-q-add" title="Выбрать файлы (Ctrl+O)">Добавить файлы…</button>
+        </header>
+        <div class="q-total"><i id="q-total-bar"></i></div>
+      </div>
+      <div class="scroller scroll-area">
+        <div class="queue" id="queue"></div>
+      </div>
+    </section>
+
+    <section id="view-gold" class="view" hidden>
+      <div class="topbar static">
+        <header class="toolbar">
+          <button class="icon-btn side-toggle" data-act="toggle-side" title="Показать боковую панель (Ctrl+\)" aria-label="Показать боковую панель"><svg class="ic"><use href="icons.svg#sidebar"/></svg></button>
+          <div class="tb-title"><h1>Эталон</h1><div id="g-summary" class="tb-meta"></div></div>
+          <button class="text-btn" id="btn-gold-tune" title="Оценить и подобрать веса ансамбля; одна запись откладывается для проверки">Оценить и подобрать веса</button>
+          <button class="text-btn strong" id="btn-gold-eval" title="Посчитать ошибки каждой модели и ансамбля на проверенном тексте">Оценить</button>
+        </header>
+        <div class="q-total"><i id="g-total-bar"></i></div>
+      </div>
+      <div class="scroller scroll-area">
+        <div class="gold" id="gold"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================================================ inspector -->
+  <aside id="inspector" aria-label="Инспектор">
+    <div class="insp-head">
+      <div class="segc full" id="insp-tabs" role="tablist">
+        <button data-v="frag" role="tab">Фрагмент</button><button data-v="spk" role="tab">Спикеры</button><button data-v="file" role="tab">Файл</button>
+      </div>
+    </div>
+    <div class="insp-body scroll-area" id="insp-body"></div>
+  </aside>
+</div>
+
+<!-- ============================================================ sheets -->
+<div class="sheet-wrap" id="sheet-new" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="new-title">
+    <h2 id="new-title">Новая транскрипция</h2>
+    <div id="new-files" class="file-pick">
+      <div class="file-list" id="file-list"></div>
+      <button class="btn" id="btn-pick">Выбрать файлы…</button>
+    </div>
+    <div class="form">
+      <label>Точность</label>
+      <div class="segc" id="opt-quality">
+        <button data-v="max" title="Ансамбль моделей: дольше, но меньше ошибок">Максимальная точность</button><button data-v="fast" title="Одна модель">Быстро</button>
+      </div>
+
+      <label>Язык</label>
+      <div class="segc" id="opt-lang">
+        <button data-v="auto">Авто</button><button data-v="ru">Русский</button><button data-v="de">Deutsch</button><button data-v="en">English</button><button data-v="other">Другой…</button>
+      </div>
+      <input id="opt-lang-other" class="field" placeholder="Код языка, например uk, fr, tr" hidden>
+
+      <label>Тип записи</label>
+      <div class="segc" id="opt-profile">
+        <button data-v="balanced">Универсальный</button><button data-v="clean">Чистая речь</button><button data-v="noisy">Совещание, шум</button>
+      </div>
+
+      <label>Спикеры</label>
+      <div class="segc" id="opt-spk">
+        <button data-v="auto">Авто</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6+</button>
+      </div>
+
+      <label for="opt-model">Модель</label>
+      <select id="opt-model" class="field"></select>
+
+      <label>Словарь</label>
+      <div class="dict-line"><span id="dict-count-line">Словарь проекта: …</span><button class="text-btn" id="btn-dict-2" type="button">Изменить…</button></div>
+
+      <label for="opt-glossary">Доп. слова</label>
+      <textarea id="opt-glossary" class="field" rows="2" placeholder="Только для этой записи, через запятую: Frau Kessler, Gleis 12, Hauptbahnhof"></textarea>
+
+      <label for="opt-topic">Тема</label>
+      <input id="opt-topic" class="field" placeholder="Необязательно: «Созвон с друзьями о поездке»">
+
+      <label></label>
+      <div class="toggles">
+        <label class="tg"><input type="checkbox" id="opt-mixed"><span></span>Смешанная речь RU + DE</label>
+        <label class="tg"><input type="checkbox" id="opt-align" checked><span></span>Точные таймкоды слов (wav2vec2)</label>
+        <label class="tg"><input type="checkbox" id="opt-stereo"><span></span>Стерео-звонок: каналы = спикеры</label>
+        <label class="tg"><input type="checkbox" id="opt-hp"><span></span>Фильтр гула 80 Гц</label>
+      </div>
+    </div>
+    <p class="hint" id="new-hint"></p>
+    <div class="sheet-actions">
+      <button class="btn" data-close>Отмена</button>
+      <button class="btn primary" id="btn-start">Распознать</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-wrap" id="sheet-models" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="models-title">
+    <h2 id="models-title">Модели</h2>
+    <p class="sheet-sub" id="models-sub">Всё работает офлайн.</p>
+    <div id="model-list" class="model-list"></div>
+    <div class="sheet-actions">
+      <button class="btn" id="btn-install-rec">Установить рекомендуемые</button>
+      <button class="btn primary" data-close>Готово</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-wrap" id="sheet-dict" hidden>
+  <div class="sheet dict-sheet" role="dialog" aria-labelledby="dict-title">
+    <h2 id="dict-title">Словарь проекта</h2>
+    <p class="sheet-sub">Применяется ко всем новым распознаваниям</p>
+    <div class="segc full" id="dict-tabs" role="tablist">
+      <button data-v="terms" role="tab">Термины</button><button data-v="repl" role="tab">Замены</button><button data-v="ctx" role="tab">Контекст</button>
+    </div>
+    <div class="dict-pane" id="dict-pane-terms">
+      <div class="dict-add-row">
+        <input id="dict-term-new" class="field" placeholder="Добавить термин" spellcheck="false" title="Enter — добавить; можно вставить список через запятую или с новой строки">
+        <input id="dict-term-filter" class="field" placeholder="Поиск" spellcheck="false" hidden>
+      </div>
+      <div id="dict-terms" class="term-list scroll-area"></div>
+    </div>
+    <div class="dict-pane" id="dict-pane-repl" hidden>
+      <div class="repl-head"><span>Распознано</span><span></span><span>Правильно</span><span></span></div>
+      <div id="dict-repl" class="repl-list scroll-area"></div>
+    </div>
+    <div class="dict-pane" id="dict-pane-ctx" hidden>
+      <textarea id="dict-context" class="field" rows="6" placeholder="О чём обычно записи: темы разговоров, имена людей, названия мест…"></textarea>
+    </div>
+    <div class="sheet-actions">
+      <span id="dict-status" class="dict-status"></span>
+      <label class="check" id="dict-apply-wrap" hidden><input type="checkbox" id="dict-apply">Применить к текущему документу</label>
+      <button class="btn" id="dict-cancel">Отмена</button>
+      <button class="btn primary" id="dict-save" title="Ctrl+Enter">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div id="menu" class="menu" hidden role="menu"></div>
+<div id="pop" class="pop" hidden></div>
+<div id="toast" class="toast" hidden></div>
+<div id="dropzone" class="dropzone" hidden>
+  <div class="drop-panel">
+    <div class="drop-title" id="drop-title">Отпустите, чтобы добавить файлы</div>
+    <div class="drop-sub">Настройки — на следующем шаге</div>
+    <div class="drop-warn" id="drop-warn" hidden></div>
+  </div>
+</div>
+
+<script type="module" src="app.js?v=9"></script>
+</body>
+</html>

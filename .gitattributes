@@ -1,0 +1,33 @@
+# Line endings as they are in the tree today: LF everywhere except the Windows launchers.
+* text=auto
+
+*.py      text eol=lf
+*.pyw     text eol=lf
+*.js      text eol=lf
+*.css     text eol=lf
+*.html    text eol=lf
+*.md      text eol=lf
+*.json    text eol=lf
+*.jsonl   text eol=lf
+*.svg     text eol=lf
+*.txt     text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.license text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+LICENSE        text eol=lf
+
+# cmd.exe needs CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binaries
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.woff2 binary
+*.wav   binary
+*.mp3   binary
+*.onnx  binary
+*.pdf   binary
